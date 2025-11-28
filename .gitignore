@@ -22,6 +22,7 @@ go.work
 .env
 .env.local
 .env.*.local
+CREDENTIALS_BACKUP.txt
 
 # IDE
 .vscode/

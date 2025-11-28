@@ -10,6 +10,24 @@ function ReadArticle() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!window.confirm('Tem certeza que deseja remover este artigo da lista de leitura?')) {
+      return;
+    }
+    
+    setDeleting(true);
+    try {
+      await apiService.deleteFromReadingList(id);
+      navigate('/articles', { state: { deleted: true, deletedId: parseInt(id) } });
+    } catch (err) {
+      console.error('Erro ao excluir artigo:', err);
+      alert('Erro ao excluir artigo. Tente novamente.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     fetchArticle();
@@ -237,6 +255,28 @@ function ReadArticle() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
               Ver Mais Artigos
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="inline-flex items-center px-6 py-3 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deleting ? (
+                <>
+                  <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Excluindo...
+                </>
+              ) : (
+                <>
+                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Excluir da Lista
+                </>
+              )}
             </button>
           </div>
         </div>

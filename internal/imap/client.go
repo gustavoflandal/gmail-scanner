@@ -482,12 +482,6 @@ func extractLinks(htmlBody string) []EmailLink {
 			return
 		}
 
-		// Evitar duplicatas
-		if seenURLs[href] {
-			return
-		}
-		seenURLs[href] = true
-
 		// Parse URL
 		parsedURL, err := url.Parse(href)
 		if err != nil {
@@ -498,6 +492,15 @@ func extractLinks(htmlBody string) []EmailLink {
 		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 			return
 		}
+
+		// Normalizar URL (remover parâmetros de tracking)
+		normalizedURL := normalizeURL(parsedURL)
+
+		// Evitar duplicatas usando URL normalizada
+		if seenURLs[normalizedURL] {
+			return
+		}
+		seenURLs[normalizedURL] = true
 
 		// Extrair título usando múltiplas estratégias
 		title := extractTitleFromLink(s, href, parsedURL)
@@ -524,7 +527,7 @@ func extractLinks(htmlBody string) []EmailLink {
 		}
 
 		links = append(links, EmailLink{
-			URL:         href,
+			URL:         normalizedURL, // Usar URL normalizada
 			Title:       title,
 			Description: description,
 			Domain:      parsedURL.Hostname(),
@@ -536,6 +539,45 @@ func extractLinks(htmlBody string) []EmailLink {
 
 	log.Infof("Extracted %d links from email", len(links))
 	return links
+}
+
+// normalizeURL remove parâmetros de tracking e normaliza a URL
+func normalizeURL(u *url.URL) string {
+	// Parâmetros de tracking a serem removidos
+	trackingParams := []string{
+		"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+		"ref", "source", "mc_cid", "mc_eid",
+		"fbclid", "gclid", "dclid",
+		"_ga", "_gl",
+		"oly_enc_id", "oly_anon_id",
+		"vero_id", "vero_conv",
+		"spm", "share_token",
+		"si", "feature",
+	}
+
+	// Copiar URL
+	normalized := *u
+
+	// Remover parâmetros de tracking
+	query := normalized.Query()
+	for _, param := range trackingParams {
+		query.Del(param)
+	}
+
+	// Se não sobrou nenhum parâmetro, remover o "?"
+	if len(query) == 0 {
+		normalized.RawQuery = ""
+	} else {
+		normalized.RawQuery = query.Encode()
+	}
+
+	// Remover fragmento (#)
+	normalized.Fragment = ""
+
+	// Remover barra final desnecessária
+	normalized.Path = strings.TrimSuffix(normalized.Path, "/")
+
+	return normalized.String()
 }
 
 // isValidTitle verifica se o título é válido:
@@ -573,8 +615,6 @@ func isIgnorableLink(href string) bool {
 		"wa.me",
 		"whatsapp.com",
 		"t.me",
-		"utm_source",
-		"utm_medium",
 		"#",
 	}
 

@@ -71,7 +71,7 @@ func (d *Database) CreateTable() error {
 		`CREATE INDEX IF NOT EXISTS idx_articles_domain ON articles(domain)`,
 		`CREATE INDEX IF NOT EXISTS idx_articles_newsletter ON articles(newsletter)`,
 		`CREATE INDEX IF NOT EXISTS idx_articles_email_date ON articles(email_date)`,
-		`CREATE INDEX IF NOT EXISTS idx_articles_url ON articles(url)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_url ON articles(url)`,
 	}
 
 	for _, idx := range indexes {
@@ -83,10 +83,10 @@ func (d *Database) CreateTable() error {
 	return nil
 }
 
-// IndexArticle salva um artigo no banco
+// IndexArticle salva um artigo no banco (ignora se URL já existe)
 func (d *Database) IndexArticle(article *Article) error {
 	query := `
-	INSERT INTO articles (url, title, description, domain, newsletter, email_date, folder, created_at)
+	INSERT OR IGNORE INTO articles (url, title, description, domain, newsletter, email_date, folder, created_at)
 	VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
 	`
 

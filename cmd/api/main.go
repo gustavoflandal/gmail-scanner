@@ -127,9 +127,8 @@ func main() {
 	// API routes públicas
 	router.HandleFunc("/api/health", getHealth).Methods("GET", "OPTIONS")
 
-	// Static files
-	fs := http.FileServer(http.Dir("./web/public"))
-	router.PathPrefix("/").Handler(fs)
+	// SPA handler - serve index.html para rotas do React Router
+	router.PathPrefix("/").HandlerFunc(spaHandler)
 
 	// Cleanup de sessões expiradas a cada hora
 	go func() {
@@ -162,6 +161,29 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// spaHandler serve arquivos estáticos ou index.html para rotas SPA
+func spaHandler(w http.ResponseWriter, r *http.Request) {
+	// Caminho do diretório público
+	publicDir := "./web/public"
+	
+	// Caminho do arquivo solicitado
+	path := r.URL.Path
+	if path == "/" {
+		path = "/index.html"
+	}
+	
+	// Verificar se o arquivo existe
+	filePath := publicDir + path
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// Se não existe, servir index.html (SPA fallback)
+		http.ServeFile(w, r, publicDir+"/index.html")
+		return
+	}
+	
+	// Se existe, servir o arquivo
+	http.ServeFile(w, r, filePath)
+}
+
 // authMiddleware verifica autenticação
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -192,12 +214,26 @@ func getHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := db.GetStats()
+	// Stats do banco SQLite (artigos extraídos)
+	dbStats, err := db.GetStats()
 	if err != nil {
 		log.Errorf("stats error: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "stats failed"})
 		return
+	}
+
+	// Stats do banco NoSQL (artigos importados/salvos localmente)
+	nosqlStats, err := nosqlDB.GetStats()
+	if err != nil {
+		log.Warnf("nosql stats error: %v", err)
+		nosqlStats = map[string]interface{}{"total_imported": 0}
+	}
+
+	// Combinar stats
+	stats := map[string]interface{}{
+		"total_articles":  dbStats["total_emails"],  // Total de artigos extraídos
+		"total_imported":  nosqlStats["total_imported"], // Total de artigos salvos localmente
 	}
 
 	w.Header().Set("Content-Type", "application/json")

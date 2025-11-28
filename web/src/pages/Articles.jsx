@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { Toast } from '../components/Toast';
+import { getAuthToken } from '../utils/storage';
 
 const ITEMS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
 function Articles() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -21,20 +23,44 @@ function Articles() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNewsletter, setSelectedNewsletter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [showOnlySaved, setShowOnlySaved] = useState(false);
 
   // Paginação
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
+
+  // Verificar autenticação
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token) {
+      navigate('/login');
+    }
+  }, [navigate]);
 
   useEffect(() => {
     fetchLinks();
     fetchImportedIds();
   }, []);
 
+  // Verificar se voltou da página de leitura após exclusão
+  useEffect(() => {
+    if (location.state?.deleted && location.state?.deletedId) {
+      // Remover o ID da lista de importados
+      setImportedIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(location.state.deletedId);
+        return newSet;
+      });
+      setToast({ message: 'Artigo removido da lista de leitura!', type: 'success' });
+      // Limpar o estado para não mostrar toast novamente
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
   // Resetar para página 1 quando filtros mudam
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedNewsletter, dateFilter, itemsPerPage]);
+  }, [searchQuery, selectedNewsletter, dateFilter, itemsPerPage, showOnlySaved]);
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -120,13 +146,32 @@ function Articles() {
   // Filtrar links
   const filteredLinks = useMemo(() => {
     return links.filter(link => {
-      // Filtro de busca por texto
+      // Filtro de artigos salvos localmente
+      if (showOnlySaved && !importedIds.has(link.id)) {
+        return false;
+      }
+
+      // Filtro de busca por texto (suporta múltiplas palavras separadas por vírgula ou espaço)
       if (searchQuery) {
-        const query = searchQuery.toLowerCase();
         const title = (link.title || '').toLowerCase();
         const url = (link.url || '').toLowerCase();
         const newsletterName = formatNewsletterName(link.newsletter).toLowerCase();
-        if (!title.includes(query) && !url.includes(query) && !newsletterName.includes(query)) {
+        const searchText = `${title} ${url} ${newsletterName}`;
+        
+        // Separar palavras por vírgula OU espaço e verificar se TODAS existem no texto
+        const searchTerms = searchQuery
+          .split(/[,\s]+/)  // Divide por vírgula ou espaços
+          .map(term => term.trim().toLowerCase())
+          .filter(term => term.length > 0); // Remove termos vazios
+        
+        // Se não há termos válidos, não filtra
+        if (searchTerms.length === 0) {
+          return true;
+        }
+        
+        // Todas as palavras devem estar presentes (em qualquer ordem)
+        const allTermsMatch = searchTerms.every(term => searchText.includes(term));
+        if (!allTermsMatch) {
           return false;
         }
       }
@@ -152,7 +197,7 @@ function Articles() {
 
       return true;
     });
-  }, [links, searchQuery, selectedNewsletter, dateFilter]);
+  }, [links, searchQuery, selectedNewsletter, dateFilter, showOnlySaved, importedIds]);
 
   // Calcular paginação
   const totalPages = Math.ceil(filteredLinks.length / itemsPerPage);
@@ -268,6 +313,7 @@ function Articles() {
     setSearchQuery('');
     setSelectedNewsletter('');
     setDateFilter('');
+    setShowOnlySaved(false);
     setCurrentPage(1);
   };
 
@@ -302,7 +348,7 @@ function Articles() {
 
   const isAllSelected = paginatedLinks.length > 0 && paginatedLinks.every(link => selectedIds.has(link.id));
   const hasSelection = selectedIds.size > 0;
-  const hasFilters = searchQuery || selectedNewsletter || dateFilter;
+  const hasFilters = searchQuery || selectedNewsletter || dateFilter || showOnlySaved;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -362,7 +408,7 @@ function Articles() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Título, URL ou newsletter..."
+              placeholder="claude code (palavras em qualquer ordem)"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -407,6 +453,24 @@ function Articles() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Checkbox para filtrar apenas salvos */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <label className="inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showOnlySaved}
+              onChange={(e) => setShowOnlySaved(e.target.checked)}
+              className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer"
+            />
+            <span className="ml-2 text-sm text-gray-700">
+              Mostrar apenas artigos salvos localmente
+            </span>
+            <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+              {importedIds.size}
+            </span>
+          </label>
         </div>
       </div>
 

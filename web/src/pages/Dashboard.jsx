@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
+import { getAuthToken } from '../utils/storage';
 
 export const Dashboard = () => {
+  const navigate = useNavigate();
   const [scanStatus, setScanStatus] = useState(null);
   const [scanProgress, setScanProgress] = useState(null);
   const [stats, setStats] = useState(null);
@@ -12,9 +15,22 @@ export const Dashboard = () => {
   const [folders, setFolders] = useState([]);
   const [selectedFolders, setSelectedFolders] = useState(['INBOX']);
   const [showFolderSelector, setShowFolderSelector] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { toasts, addToast } = useToast();
 
+  // Verificar autenticação
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+    setIsAuthenticated(true);
+  }, [navigate]);
+
   const fetchData = async () => {
+    if (!isAuthenticated) return;
+    
     try {
       setLoading(true);
       const [statusData, statsData] = await Promise.all([
@@ -34,22 +50,32 @@ export const Dashboard = () => {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
+      // Se erro 401, redirecionar para login
+      if (error.response?.status === 401) {
+        navigate('/login');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const fetchFolders = async () => {
+    if (!isAuthenticated) return;
+    
     try {
       const data = await apiService.getFolders();
       setFolders(data.folders || []);
     } catch (error) {
       console.error('Error fetching folders:', error);
-      addToast('Erro ao carregar pastas', 'error');
+      if (error.response?.status !== 401) {
+        addToast('Erro ao carregar pastas', 'error');
+      }
     }
   };
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+    
     fetchData();
     fetchFolders();
     
@@ -59,7 +85,7 @@ export const Dashboard = () => {
     }, scanning ? 2000 : 10000);
     
     return () => clearInterval(interval);
-  }, [scanning]);
+  }, [scanning, isAuthenticated]);
 
   const handleManualScan = async () => {
     if (selectedFolders.length === 0) {
@@ -271,33 +297,17 @@ export const Dashboard = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="bg-blue-50 p-6 rounded-lg">
-              <p className="text-sm text-gray-600 mb-2">Total de E-mails</p>
-              <p className="text-4xl font-bold text-primary-600">{stats.total_emails || 0}</p>
+              <p className="text-sm text-gray-600 mb-2">Total de Artigos Extraídos</p>
+              <p className="text-4xl font-bold text-primary-600">{stats.total_articles || 0}</p>
+              <p className="text-xs text-gray-500 mt-2">Links encontrados nas newsletters</p>
             </div>
 
             <div className="bg-green-50 p-6 rounded-lg">
-              <p className="text-sm text-gray-600 mb-2">Pastas Monitoradas</p>
-              <p className="text-4xl font-bold text-green-600">
-                {stats.folders?.buckets?.length || 0}
-              </p>
+              <p className="text-sm text-gray-600 mb-2">Artigos Salvos Localmente</p>
+              <p className="text-4xl font-bold text-green-600">{stats.total_imported || 0}</p>
+              <p className="text-xs text-gray-500 mt-2">Importados para leitura offline</p>
             </div>
           </div>
-
-          {stats.folders?.buckets && stats.folders.buckets.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">E-mails por Pasta</h3>
-              <div className="space-y-3">
-                {stats.folders.buckets.map((folder) => (
-                  <div key={folder.key} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
-                    <span className="font-medium text-gray-700">{folder.key}</span>
-                    <span className="bg-primary-100 text-primary-800 px-3 py-1 rounded-full font-semibold">
-                      {folder.doc_count}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
